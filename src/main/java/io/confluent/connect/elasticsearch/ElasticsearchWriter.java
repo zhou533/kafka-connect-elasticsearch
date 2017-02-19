@@ -19,6 +19,9 @@ package io.confluent.connect.elasticsearch;
 import org.apache.kafka.common.utils.SystemTime;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
+import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsResponse;
+import org.elasticsearch.client.Client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,16 +34,11 @@ import java.util.Map;
 import java.util.Set;
 
 import io.confluent.connect.elasticsearch.bulk.BulkProcessor;
-import io.searchbox.action.Action;
-import io.searchbox.client.JestClient;
-import io.searchbox.client.JestResult;
-import io.searchbox.indices.CreateIndex;
-import io.searchbox.indices.IndicesExists;
 
 public class ElasticsearchWriter {
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchWriter.class);
 
-  private final JestClient client;
+  private final Client client;
   private final String type;
   private final boolean ignoreKey;
   private final Set<String> ignoreKeyTopics;
@@ -53,7 +51,7 @@ public class ElasticsearchWriter {
   private final Set<String> existingMappings;
 
   ElasticsearchWriter(
-      JestClient client,
+      Client client,
       String type,
       boolean ignoreKey,
       Set<String> ignoreKeyTopics,
@@ -92,7 +90,7 @@ public class ElasticsearchWriter {
   }
 
   public static class Builder {
-    private final JestClient client;
+    private final Client client;
     private String type;
     private boolean ignoreKey = false;
     private Set<String> ignoreKeyTopics = Collections.emptySet();
@@ -107,7 +105,7 @@ public class ElasticsearchWriter {
     private int maxRetry;
     private long retryBackoffMs;
 
-    public Builder(JestClient client) {
+    public Builder(Client client) {
       this.client = client;
     }
 
@@ -232,27 +230,16 @@ public class ElasticsearchWriter {
   }
 
   private boolean indexExists(String index) {
-    Action action = new IndicesExists.Builder(index).build();
-    try {
-      JestResult result = client.execute(action);
-      return result.isSucceeded();
-    } catch (IOException e) {
-      throw new ConnectException(e);
-    }
+    IndicesExistsResponse response = client.admin().indices().prepareExists(index).execute().actionGet();
+    log.debug("IsExist indices: " + index);
+    return response.isExists();
   }
 
   public void createIndicesForTopics(Set<String> assignedTopics) {
     for (String index : indicesForTopics(assignedTopics)) {
       if (!indexExists(index)) {
-        CreateIndex createIndex = new CreateIndex.Builder(index).build();
-        try {
-          JestResult result = client.execute(createIndex);
-          if (!result.isSucceeded()) {
-            throw new ConnectException("Could not create index:" + index);
-          }
-        } catch (IOException e) {
-          throw new ConnectException(e);
-        }
+        CreateIndexResponse response = client.admin().indices().prepareCreate(index).execute().actionGet();
+        log.debug("I: create indices: " + index);
       }
     }
   }

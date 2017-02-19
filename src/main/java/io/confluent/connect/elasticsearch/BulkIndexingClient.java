@@ -16,8 +16,12 @@
 package io.confluent.connect.elasticsearch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import org.elasticsearch.action.bulk.BulkItemResponse;
+import org.elasticsearch.action.bulk.BulkRequestBuilder;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.index.engine.VersionConflictEngineException;
+import org.elasticsearch.index.mapper.MapperParsingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,36 +31,38 @@ import java.util.List;
 
 import io.confluent.connect.elasticsearch.bulk.BulkClient;
 import io.confluent.connect.elasticsearch.bulk.BulkResponse;
-import io.searchbox.client.JestClient;
-import io.searchbox.core.Bulk;
-import io.searchbox.core.BulkResult;
 
-public class BulkIndexingClient implements BulkClient<IndexableRecord, Bulk> {
+public class BulkIndexingClient implements BulkClient<IndexableRecord, BulkRequestBuilder> {
 
   private static final Logger LOG = LoggerFactory.getLogger(BulkIndexingClient.class);
 
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-  private final JestClient client;
+  private final Client client;
 
-  public BulkIndexingClient(JestClient client) {
+  public BulkIndexingClient(Client client) {
     this.client = client;
   }
 
   @Override
-  public Bulk bulkRequest(List<IndexableRecord> batch) {
-    final Bulk.Builder builder = new Bulk.Builder();
+  public BulkRequestBuilder bulkRequest(List<IndexableRecord> batch) {
+    /*final Bulk.Builder builder = new Bulk.Builder();
     for (IndexableRecord record : batch) {
       builder.addAction(record.toIndexRequest());
     }
-    return builder.build();
+    return builder.build();*/
+    BulkRequestBuilder bulkRequest = client.prepareBulk();
+    for (IndexableRecord record : batch) {
+      bulkRequest.add(record.toIndexRequest(client));
+    }
+    return bulkRequest;
   }
 
   @Override
-  public BulkResponse execute(Bulk bulk) throws IOException {
-    final BulkResult result = client.execute(bulk);
+  public BulkResponse execute(BulkRequestBuilder bulk) throws IOException {
+    final org.elasticsearch.action.bulk.BulkResponse result = bulk.get();
 
-    if (result.isSucceeded()) {
+    if (!result.hasFailures()) {
       return BulkResponse.success();
     }
 
@@ -65,17 +71,17 @@ public class BulkIndexingClient implements BulkClient<IndexableRecord, Bulk> {
     final List<Key> versionConflicts = new ArrayList<>();
     final List<String> errors = new ArrayList<>();
 
-    for (BulkResult.BulkResultItem item : result.getItems()) {
-      if (item.error != null) {
-        final ObjectNode parsedError = (ObjectNode) OBJECT_MAPPER.readTree(item.error);
-        final String errorType = parsedError.get("type").asText("");
-        if ("version_conflict_engine_exception".equals(errorType)) {
-          versionConflicts.add(new Key(item.index, item.type, item.id));
-        } else if ("mapper_parse_exception".equals(errorType)) {
+    for (BulkItemResponse item : result.getItems()) {
+      if (item.isFailed()) {
+        //final ObjectNode parsedError = (ObjectNode) OBJECT_MAPPER.readTree(item.error);
+        //final String errorType = parsedError.get("type").asText("");
+        if (item.getFailure().getCause() instanceof VersionConflictEngineException/*"version_conflict_engine_exception".equals(errorType)*/) {
+          versionConflicts.add(new Key(item.getIndex(), item.getType(), item.getId()));
+        } else if (item.getFailure().getCause() instanceof MapperParsingException/*"mapper_parse_exception".equals(errorType)*/) {
           retriable = false;
-          errors.add(item.error);
+          errors.add(item.getFailureMessage());
         } else {
-          errors.add(item.error);
+          errors.add(item.getFailureMessage());
         }
       }
     }
@@ -88,7 +94,7 @@ public class BulkIndexingClient implements BulkClient<IndexableRecord, Bulk> {
       }
     }
 
-    final String errorInfo = errors.isEmpty() ? result.getErrorMessage() : errors.toString();
+    final String errorInfo = errors.isEmpty() ? result.buildFailureMessage() : errors.toString();
 
     return BulkResponse.failure(retriable, errorInfo);
   }

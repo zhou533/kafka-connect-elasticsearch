@@ -24,6 +24,7 @@ import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.elasticsearch.client.Client;
 import org.junit.Test;
 
 import java.math.BigDecimal;
@@ -37,8 +38,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import io.searchbox.client.JestClient;
 
 @ThreadLeakScope(ThreadLeakScope.Scope.NONE)
 public class ElasticsearchWriterTest extends ElasticsearchSinkTestBase {
@@ -265,11 +264,11 @@ public class ElasticsearchWriterTest extends ElasticsearchSinkTestBase {
     return records;
   }
 
-  private ElasticsearchWriter initWriter(JestClient client, boolean ignoreKey, boolean ignoreSchema) {
+  private ElasticsearchWriter initWriter(Client client, boolean ignoreKey, boolean ignoreSchema) {
     return initWriter(client, ignoreKey, Collections.<String>emptySet(), ignoreSchema, Collections.<String>emptySet(), Collections.<String, String>emptyMap());
   }
 
-  private ElasticsearchWriter initWriter(JestClient client, boolean ignoreKey, Set<String> ignoreKeyTopics, boolean ignoreSchema, Set<String> ignoreSchemaTopics, Map<String, String> topicToIndexMap) {
+  private ElasticsearchWriter initWriter(Client client, boolean ignoreKey, Set<String> ignoreKeyTopics, boolean ignoreSchema, Set<String> ignoreSchemaTopics, Map<String, String> topicToIndexMap) {
     ElasticsearchWriter writer = new ElasticsearchWriter.Builder(client)
         .setType(TYPE)
         .setIgnoreKey(ignoreKey, ignoreKeyTopics)

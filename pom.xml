@@ -12,12 +12,12 @@
         <confluent.version>3.1.2</confluent.version>
         <kafka.version>0.10.1.1-cp1</kafka.version>
         <junit.version>4.12</junit.version>
-        <es.version>2.4.1</es.version>
-        <lucene.version>5.5.2</lucene.version>
+        <es.version>5.1.1</es.version>
+        <lucene.version>6.3.0</lucene.version>
         <slf4j.version>1.7.5</slf4j.version>
         <jna.version>4.2.1</jna.version>
         <hamcrest.version>2.0.0.0</hamcrest.version>
-        <jest.version>2.0.0</jest.version>
+        <!--<jest.version>2.0.0</jest.version>-->
         <licenses.version>3.1.2</licenses.version>
         <confluent.maven.repo>http://packages.confluent.io/maven/</confluent.maven.repo>
     </properties>
@@ -27,6 +27,17 @@
             <id>confluent</id>
             <name>Confluent</name>
             <url>${confluent.maven.repo}</url>
+        </repository>
+        <!-- add the elasticsearch repo -->
+        <repository>
+            <id>elasticsearch-releases</id>
+            <url>https://artifacts.elastic.co/maven</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
         </repository>
     </repositories>
 
@@ -42,10 +53,25 @@
             <version>${kafka.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.elasticsearch</groupId>
+            <artifactId>elasticsearch</artifactId>
+            <version>${es.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>transport</artifactId>
+            <version>${es.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>x-pack-transport</artifactId>
+            <version>${es.version}</version>
+        </dependency>
+        <!--<dependency>
             <groupId>io.searchbox</groupId>
             <artifactId>jest</artifactId>
             <version>${jest.version}</version>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
@@ -82,6 +108,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.elasticsearch.test</groupId>
+            <artifactId>framework</artifactId>
+            <version>${es.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!--<dependency>
             <groupId>org.elasticsearch</groupId>
             <artifactId>elasticsearch</artifactId>
             <version>${es.version}</version>
@@ -93,11 +125,24 @@
             <artifactId>elasticsearch</artifactId>
             <version>${es.version}</version>
             <scope>test</scope>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-expressions</artifactId>
             <version>${lucene.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>2.7</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.7</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -16,7 +16,8 @@
 
 package io.confluent.connect.elasticsearch;
 
-import io.searchbox.core.Index;
+import org.elasticsearch.action.index.IndexRequestBuilder;
+import org.elasticsearch.client.Client;
 
 public class IndexableRecord {
 
@@ -30,15 +31,20 @@ public class IndexableRecord {
     this.payload = payload;
   }
 
-  public Index toIndexRequest() {
-    Index.Builder req = new Index.Builder(payload)
+  public IndexRequestBuilder toIndexRequest(Client client) {
+    /*Index.Builder req = new Index.Builder(payload)
         .index(key.index)
         .type(key.type)
         .id(key.id);
     if (version != null) {
       req.setParameter("version_type", "external").setParameter("version", version);
     }
-    return req.build();
+    return req.build();*/
+    IndexRequestBuilder request = client.prepareIndex(key.index, key.type, key.id)
+            .setSource(
+              payload      
+            );
+    return request;
   }
 
 }

@@ -16,8 +16,6 @@
 
 package io.confluent.connect.elasticsearch;
 
-import com.google.gson.JsonObject;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -30,15 +28,13 @@ import org.apache.kafka.connect.data.Time;
 import org.apache.kafka.connect.data.Timestamp;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.DataException;
+import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
+import org.elasticsearch.action.admin.indices.mapping.put.PutMappingResponse;
+import org.elasticsearch.client.Client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-
-import io.searchbox.client.JestClient;
-import io.searchbox.client.JestResult;
-import io.searchbox.indices.mapping.GetMapping;
-import io.searchbox.indices.mapping.PutMapping;
 
 import static io.confluent.connect.elasticsearch.ElasticsearchSinkConnectorConstants.MAP_KEY;
 import static io.confluent.connect.elasticsearch.ElasticsearchSinkConnectorConstants.MAP_VALUE;
@@ -55,21 +51,22 @@ public class Mapping {
    * @param schema The schema used to infer mapping.
    * @throws IOException
    */
-  public static void createMapping(JestClient client, String index, String type, Schema schema) throws IOException {
+  public static void createMapping(Client client, String index, String type, Schema schema) throws IOException {
     ObjectNode obj = JsonNodeFactory.instance.objectNode();
     obj.set(type, inferMapping(schema));
-    PutMapping putMapping = new PutMapping.Builder(index, type, obj.toString()).build();
-    JestResult result = client.execute(putMapping);
-    if (!result.isSucceeded()) {
-      throw new ConnectException("Cannot create mapping " + obj + " -- " + result.getErrorMessage());
+    PutMappingResponse result = client.admin().indices().preparePutMapping(index).setType(type).setSource(obj.toString()).get();
+    //PutMapping putMapping = new PutMapping.Builder(index, type, obj.toString()).build();
+    //JestResult result = client.execute(putMapping);
+    if (!result.isAcknowledged()) {
+      throw new ConnectException("Cannot create mapping " + obj + " -- " + result.toString());
     }
   }
 
   /**
    * Get the JSON mapping for given index and type. Returns {@code null} if it does not exist.
    */
-  public static JsonObject getMapping(JestClient client, String index, String type) throws IOException {
-    final JestResult result = client.execute(new GetMapping.Builder().addIndex(index).addType(type).build());
+  public static Object getMapping(Client client, String index, String type) throws IOException {
+    /*final JestResult result = client.execute(new GetMapping.Builder().addIndex(index).addType(type).build());
     final JsonObject indexRoot = result.getJsonObject().getAsJsonObject(index);
     if (indexRoot == null) {
       return null;
@@ -78,7 +75,13 @@ public class Mapping {
     if (mappingsJson == null) {
       return  null;
     }
-    return mappingsJson.getAsJsonObject(type);
+    return mappingsJson.getAsJsonObject(type);*/
+    GetMappingsResponse result = client.admin().indices().prepareGetMappings(index).setTypes(type).get();
+    if (result == null) {
+      return null;
+    }
+    
+    return result.getMappings();
   }
 
   /**

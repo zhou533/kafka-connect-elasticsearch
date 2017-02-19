@@ -16,31 +16,30 @@
 
 package io.confluent.connect.elasticsearch;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.sink.SinkRecord;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.elasticsearch.node.Node;
+import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.test.ESIntegTestCase;
+import org.elasticsearch.transport.client.PreBuiltTransportClient;
 import org.junit.After;
 import org.junit.Before;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-
-import io.searchbox.client.JestClientFactory;
-import io.searchbox.client.config.HttpClientConfig;
-import io.searchbox.client.http.JestHttpClient;
-import io.searchbox.core.Search;
-import io.searchbox.core.SearchResult;
 
 public class ElasticsearchSinkTestBase extends ESIntegTestCase {
 
@@ -54,25 +53,32 @@ public class ElasticsearchSinkTestBase extends ESIntegTestCase {
   protected static final TopicPartition TOPIC_PARTITION2 = new TopicPartition(TOPIC, PARTITION2);
   protected static final TopicPartition TOPIC_PARTITION3 = new TopicPartition(TOPIC, PARTITION3);
 
-  protected JestHttpClient client;
+  protected Client client;
 
   @Before
   public void setUp() throws Exception {
     super.setUp();
-    final JestClientFactory factory = new JestClientFactory();
+    /*final JestClientFactory factory = new JestClientFactory();
     factory.setHttpClientConfig(
         new HttpClientConfig
             .Builder("http://localhost:" + getPort())
             .multiThreaded(true).build()
     );
-    client = (JestHttpClient) factory.getObject();
+    client = (JestHttpClient) factory.getObject();*/
+    Settings settings = Settings.builder()
+            .put("cluster.name", cluster().getClusterName())
+            .build();
+    TransportClient transportClient = new PreBuiltTransportClient(settings);
+    URI host = URI.create("localhost:" + getPort());
+    transportClient.addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(host.getHost()), host.getPort()));
+    client = transportClient;
   }
 
   @After
   public void tearDown() throws Exception {
     super.tearDown();
     if (client != null) {
-      client.shutdownClient();
+      client.close();
     }
     client = null;
   }
@@ -109,12 +115,12 @@ public class ElasticsearchSinkTestBase extends ESIntegTestCase {
     return struct;
   }
 
-  protected void verifySearchResults(Collection<SinkRecord> records, boolean ignoreKey, boolean ignoreSchema) throws IOException {
+  protected void verifySearchResults(Collection<SinkRecord> records, boolean ignoreKey, boolean ignoreSchema) throws Exception {
     verifySearchResults(records, TOPIC, ignoreKey, ignoreSchema);
   }
 
-  protected void verifySearchResults(Collection<SinkRecord> records, String index, boolean ignoreKey, boolean ignoreSchema) throws IOException {
-    final SearchResult result = client.execute(new Search.Builder("").addIndex(index).build());
+  protected void verifySearchResults(Collection<SinkRecord> records, String index, boolean ignoreKey, boolean ignoreSchema) throws Exception {
+    /*final SearchResult result = client.execute(new Search.Builder("").addIndex(index).build());
 
     final JsonArray rawHits = result.getJsonObject().getAsJsonObject("hits").getAsJsonArray("hits");
 
@@ -131,17 +137,34 @@ public class ElasticsearchSinkTestBase extends ESIntegTestCase {
     for (SinkRecord record : records) {
       final IndexableRecord indexableRecord = DataConverter.convertRecord(record, index, TYPE, ignoreKey, ignoreSchema);
       assertEquals(indexableRecord.payload, hits.get(indexableRecord.key.id));
+    }*/
+    SearchResponse result = client.prepareSearch(index).execute().get();
+    
+    SearchHit[] rawHits = result.getHits().getHits();
+
+    assertEquals(records.size(), rawHits.length);
+
+    Map<String, String> hits = new HashMap<>();
+    for (int i = 0; i < rawHits.length; ++i) {
+      SearchHit hit = rawHits[i];
+      String id = hit.getId();
+      String source = hit.getSourceAsString();
+      hits.put(id, source);
+    }
+
+    for (SinkRecord record : records) {
+      final IndexableRecord indexableRecord = DataConverter.convertRecord(record, index, TYPE, ignoreKey, ignoreSchema);
+      assertEquals(indexableRecord.payload, hits.get(indexableRecord.key.id));
     }
   }
 
-  @Override
+  /*@Override
   protected Settings nodeSettings(int nodeOrdinal) {
-    return Settings.settingsBuilder()
+    return Settings.builder()
         .put(super.nodeSettings(nodeOrdinal))
         .put(IndexMetaData.SETTING_NUMBER_OF_SHARDS, 1)
         .put(IndexMetaData.SETTING_NUMBER_OF_REPLICAS, 1)
-        .put(Node.HTTP_ENABLED, true)
         .build();
-  }
+  }*/
 
 }

@@ -22,9 +22,18 @@ import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.client.transport.TransportClient;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.transport.InetSocketTransportAddress;
+import org.elasticsearch.transport.client.PreBuiltTransportClient;
+import org.elasticsearch.xpack.client.PreBuiltXPackTransportClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -32,15 +41,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import io.searchbox.client.JestClient;
-import io.searchbox.client.JestClientFactory;
-import io.searchbox.client.config.HttpClientConfig;
-
 public class ElasticsearchSinkTask extends SinkTask {
 
   private static final Logger log = LoggerFactory.getLogger(ElasticsearchSinkTask.class);
   private ElasticsearchWriter writer;
-  private JestClient client;
+  private Client client;
 
   @Override
   public String version() {
@@ -53,7 +58,7 @@ public class ElasticsearchSinkTask extends SinkTask {
   }
 
   // public for testing
-  public void start(Map<String, String> props, JestClient client) {
+  public void start(Map<String, String> props, Client client) {
     try {
       log.info("Starting ElasticsearchSinkTask.");
 
@@ -78,9 +83,29 @@ public class ElasticsearchSinkTask extends SinkTask {
         this.client = client;
       } else {
         String address = config.getString(ElasticsearchSinkConnectorConfig.CONNECTION_URL_CONFIG);
-        JestClientFactory factory = new JestClientFactory();
-        factory.setHttpClientConfig(new HttpClientConfig.Builder(address).multiThreaded(true).build());
-        this.client = factory.getObject();
+        String[] addresses = address.split(",");        
+        //JestClientFactory factory = new JestClientFactory();
+        //factory.setHttpClientConfig(new HttpClientConfig.Builder(address).multiThreaded(true).build());
+        //this.client = factory.getObject();
+        String clusterName = "";
+        String securityUser = "";
+        Settings.Builder settings = Settings.builder();
+        settings.put("cluster.name", clusterName);
+
+        TransportClient transportClient;
+        if (securityUser == null || securityUser.length() == 0) {
+          transportClient = new PreBuiltTransportClient(settings.build());
+        } else {
+          settings.put("xpack.security.user", securityUser);
+          transportClient = new PreBuiltXPackTransportClient(settings.build());
+        }
+
+        for (String node : addresses) {
+          URI host = URI.create(node);
+          transportClient.addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(host.getHost()), host.getPort()));
+        }
+        
+        this.client = transportClient;
       }
 
       ElasticsearchWriter.Builder builder = new ElasticsearchWriter.Builder(this.client)
@@ -100,6 +125,8 @@ public class ElasticsearchSinkTask extends SinkTask {
       writer.start();
     } catch (ConfigException e) {
       throw new ConnectException("Couldn't start ElasticsearchSinkTask due to configuration error:", e);
+    } catch (UnknownHostException e) {
+      throw new ConnectException("Couldn't start ElasticsearchSinkTask due to Unknown Hosts error:", e);
     }
   }
 
@@ -137,7 +164,7 @@ public class ElasticsearchSinkTask extends SinkTask {
       writer.stop();
     }
     if (client != null) {
-      client.shutdownClient();
+      client.close();
     }
   }
 
